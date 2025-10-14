@@ -7,10 +7,11 @@ Este repositório contém um script de **batch** para automatizar a instalação
 - Desabilita o Firewall do Windows (opcional e configurável).
 - Configura o serviço de Área de Trabalho Remota (RDP) (opcional e configurável).
 - Valida se o **FusionInventory Agent** já está instalado.
-- Baixa e instala a versão correta do agente conforme a arquitetura do sistema (x86 ou x64).
+- Baixa a versão correta do agente conforme a arquitetura (x86 ou x64), tentando `BITSADMIN`, `PowerShell`, `curl` e `certutil` em sequência.
 - Reinicia o serviço do agente e força o inventário após a instalação.
 - Configura o serviço do agente para iniciar automaticamente com atraso e para reiniciar em caso de falhas.
-- Verifica o status do agente após a instalação e informa eventuais falhas.
+- Verifica o status do agente após a instalação e tenta múltiplas abordagens quando `curl` não está disponível.
+- Evita reinstalar o agente quando o serviço já está instalado e apenas reinicia quando necessário.
 
 ## Pré-requisitos
 

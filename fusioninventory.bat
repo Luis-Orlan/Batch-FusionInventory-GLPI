@@ -32,8 +32,21 @@ if /I "%habilitar_rdp%"=="sim" call :configure_rdp
 call :verificar_servico
 
 if /I "!instalar!"=="nao" (
-    call :log "O FusionInventory !arq_system! já está instalado"
+    call :log "O FusionInventory !arq_system! já está instalado e em execução"
+    call :verificar_status
     goto :sair
+)
+
+if /I "!instalar!"=="condicional" (
+    call :log "O serviço do FusionInventory foi encontrado, mas está parado. Tentando iniciar"
+    call :iniciar_servico
+    if errorlevel 1 (
+        call :log "Não foi possível iniciar o serviço existente. Seguindo com a reinstalação"
+    ) else (
+        call :log "Serviço iniciado com sucesso sem reinstalar"
+        call :verificar_status
+        goto :sair
+    )
 )
 
 call :log "Será necessário instalar o FusionInventory !arq_system!"
@@ -89,11 +102,15 @@ exit /b 0
 
 :verificar_servico
 set "servico=FusionInventory-Agent"
-sc query "!servico!" | find /C /I "RUNNING">nul
-if !errorlevel! EQU 0 (
-    set "instalar=nao"
-) else (
-    set "instalar=sim"
+set "instalar=sim"
+set "estado_servico="
+for /f "tokens=4" %%I in ('sc query "!servico!" ^| findstr /I "STATE"') do set "estado_servico=%%I"
+if defined estado_servico (
+    if /I "!estado_servico!"=="RUNNING" (
+        set "instalar=nao"
+    ) else (
+        set "instalar=condicional"
+    )
 )
 call :detectar_arquitetura
 exit /b 0
@@ -131,6 +148,16 @@ if not exist "!destino!" (
 )
 
 if not exist "!destino!" (
+    call :log "PowerShell indisponível ou download falhou, tentando via curl"
+    curl -f -L "!downloadAgente!" -o "!destino!" >nul 2>&1
+)
+
+if not exist "!destino!" (
+    call :log "curl indisponível ou download falhou, tentando via certutil"
+    certutil -urlcache -split -f "!downloadAgente!" "!destino!" >nul 2>&1
+)
+
+if not exist "!destino!" (
     call :log "Falha no download do agente"
     exit /b 1
 )
@@ -154,11 +181,24 @@ sc failure "!servico!" actions=restart/60000/restart/60000/restart/60000 reset=3
 net start "!servico!">nul 2>&1
 exit /b 0
 
+:iniciar_servico
+set "servico=FusionInventory-Agent"
+net start "!servico!">nul 2>&1
+if errorlevel 1 exit /b 1
+exit /b 0
+
 :verificar_status
 curl -s http://localhost:%porta_status%/status | find "status:" >nul 2>&1
 if errorlevel 1 (
-    call :log "Não foi possível obter o status pela porta %porta_status%"
-) else (
-    call :log "Status do agente obtido com sucesso"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "try { if ((Invoke-WebRequest -Uri 'http://localhost:%porta_status%/status' -UseBasicParsing).Content -match 'status:') { exit 0 } else { exit 2 } } catch { exit 1 }" >nul 2>&1
+    if errorlevel 1 goto :verificar_status_falha
 )
+goto :verificar_status_sucesso
+
+:verificar_status_falha
+call :log "Não foi possível obter o status pela porta %porta_status%"
+exit /b 1
+
+:verificar_status_sucesso
+call :log "Status do agente obtido com sucesso"
 exit /b 0
